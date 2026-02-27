@@ -1,132 +1,137 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   getTodos,
-  addTodo,
+  createTodo,
   updateTodo,
   deleteTodo,
-  toggleTodo,
-  subscribeTodos,
+  toggleTodoComplete,
+  subscribeToTodos,
 } from '../lib/todoService';
-import type { Todo, CreateTodoPayload, UpdateTodoPayload } from '../types/todo';
+import type { Todo, CreateTodoPayload, UpdateTodoPayload } from '../lib/types';
 
-interface UseTodosReturn {
+interface UseTodosState {
   todos: Todo[];
   loading: boolean;
   error: string | null;
+}
+
+interface UseTodosReturn extends UseTodosState {
   addTodo: (payload: CreateTodoPayload) => Promise<void>;
-  updateTodo: (id: string, payload: UpdateTodoPayload) => Promise<void>;
-  deleteTodo: (id: string) => Promise<void>;
-  toggleTodo: (id: string, currentValue: boolean) => Promise<void>;
+  editTodo: (id: string, payload: UpdateTodoPayload) => Promise<void>;
+  removeTodo: (id: string) => Promise<void>;
+  toggleComplete: (id: string, currentValue: boolean) => Promise<void>;
   clearError: () => void;
 }
 
 export function useTodos(): UseTodosReturn {
-  const [todos, setTodos] = useState<Todo[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  const [state, setState] = useState<UseTodosState>({
+    todos: [],
+    loading: true,
+    error: null,
+  });
 
-  const handleError = (err: unknown, context: string) => {
-    const message = err instanceof Error ? err.message : `Unknown error in ${context}`;
-    console.error(`[useTodos] ${context}:`, err);
-    setError(message);
-  };
+  // -------------------------------------------------------------------------
+  // Initial load
+  // -------------------------------------------------------------------------
+  const fetchTodos = useCallback(async () => {
+    setState((prev) => ({ ...prev, loading: true, error: null }));
+    const result = await getTodos();
+    if (result.error) {
+      setState((prev) => ({ ...prev, loading: false, error: result.error!.message }));
+    } else {
+      setState({ todos: result.data, loading: false, error: null });
+    }
+  }, []);
 
-  // Initial fetch
+  // -------------------------------------------------------------------------
+  // Real-time subscription — keeps local state in sync without re-fetching
+  // -------------------------------------------------------------------------
   useEffect(() => {
-    let cancelled = false;
-
-    const fetchTodos = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await getTodos();
-        if (!cancelled) setTodos(data);
-      } catch (err) {
-        if (!cancelled) handleError(err, 'fetchTodos');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
     fetchTodos();
-    return () => { cancelled = true; };
-  }, []);
 
-  // Real-time subscription
-  useEffect(() => {
-    const channel = subscribeTodos(
-      // INSERT: prepend to list (newest first)
-      (newTodo) => setTodos((prev) => [newTodo, ...prev]),
-      // UPDATE: replace in-place
-      (updatedTodo) =>
-        setTodos((prev) =>
-          prev.map((t) => (t.id === updatedTodo.id ? updatedTodo : t))
-        ),
-      // DELETE: remove by id
-      (deletedId) =>
-        setTodos((prev) => prev.filter((t) => t.id !== deletedId))
-    );
+    const unsubscribe = subscribeToTodos((event) => {
+      setState((prev) => {
+        switch (event.eventType) {
+          case 'INSERT': {
+            if (!event.new) return prev;
+            // Avoid duplicates (optimistic updates may have already added it)
+            const exists = prev.todos.some((t) => t.id === event.new!.id);
+            if (exists) return prev;
+            return { ...prev, todos: [event.new, ...prev.todos] };
+          }
+          case 'UPDATE': {
+            if (!event.new) return prev;
+            return {
+              ...prev,
+              todos: prev.todos.map((t) =>
+                t.id === event.new!.id ? event.new! : t
+              ),
+            };
+          }
+          case 'DELETE': {
+            const deletedId = event.old?.id;
+            if (!deletedId) return prev;
+            return {
+              ...prev,
+              todos: prev.todos.filter((t) => t.id !== deletedId),
+            };
+          }
+          default:
+            return prev;
+        }
+      });
+    });
 
-    return () => {
-      channel.unsubscribe();
-    };
-  }, []);
+    return unsubscribe;
+  }, [fetchTodos]);
 
-  const handleAddTodo = useCallback(async (payload: CreateTodoPayload) => {
-    setError(null);
-    try {
-      // Optimistic insert is handled by the real-time subscription
-      await addTodo(payload);
-    } catch (err) {
-      handleError(err, 'addTodo');
+  // -------------------------------------------------------------------------
+  // Mutations
+  // -------------------------------------------------------------------------
+  const addTodo = useCallback(async (payload: CreateTodoPayload) => {
+    const result = await createTodo(payload);
+    if (result.error) {
+      setState((prev) => ({ ...prev, error: result.error!.message }));
     }
+    // Real-time INSERT event will update the list
   }, []);
 
-  const handleUpdateTodo = useCallback(async (id: string, payload: UpdateTodoPayload) => {
-    setError(null);
-    try {
-      await updateTodo(id, payload);
-    } catch (err) {
-      handleError(err, 'updateTodo');
+  const editTodo = useCallback(async (id: string, payload: UpdateTodoPayload) => {
+    const result = await updateTodo(id, payload);
+    if (result.error) {
+      setState((prev) => ({ ...prev, error: result.error!.message }));
     }
+    // Real-time UPDATE event will update the list
   }, []);
 
-  const handleDeleteTodo = useCallback(async (id: string) => {
-    setError(null);
-    try {
-      await deleteTodo(id);
-    } catch (err) {
-      handleError(err, 'deleteTodo');
+  const removeTodo = useCallback(async (id: string) => {
+    const result = await deleteTodo(id);
+    if (result.error) {
+      setState((prev) => ({ ...prev, error: result.error!.message }));
     }
+    // Real-time DELETE event will update the list
   }, []);
 
-  const handleToggleTodo = useCallback(async (id: string, currentValue: boolean) => {
-    setError(null);
-    // Optimistic update
-    setTodos((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, is_complete: !currentValue } : t))
-    );
-    try {
-      await toggleTodo(id, currentValue);
-    } catch (err) {
-      // Revert optimistic update on failure
-      setTodos((prev) =>
-        prev.map((t) => (t.id === id ? { ...t, is_complete: currentValue } : t))
-      );
-      handleError(err, 'toggleTodo');
+  const toggleComplete = useCallback(async (id: string, currentValue: boolean) => {
+    const result = await toggleTodoComplete(id, currentValue);
+    if (result.error) {
+      setState((prev) => ({ ...prev, error: result.error!.message }));
     }
+    // Real-time UPDATE event will update the list
   }, []);
 
-  const clearError = useCallback(() => setError(null), []);
+  const clearError = useCallback(() => {
+    setState((prev) => ({ ...prev, error: null }));
+  }, []);
 
   return {
-    todos,
-    loading,
-    error,
-    addTodo: handleAddTodo,
-    updateTodo: handleUpdateTodo,
-    deleteTodo: handleDeleteTodo,
-    toggleTodo: handleToggleTodo,
+    todos: state.todos,
+    loading: state.loading,
+    error: state.error,
+    addTodo,
+    editTodo,
+    removeTodo,
+    toggleComplete,
     clearError,
   };
 }
