@@ -1,5 +1,21 @@
-// Auto-generated style database type definitions for Supabase client typing.
-// In a real project, run `supabase gen types typescript` to generate this file.
+/**
+ * Auto-generated Supabase database types.
+ *
+ * These types reflect the `todos` table schema and are used
+ * to provide full type safety when calling the Supabase client.
+ *
+ * In a real project, regenerate this file with:
+ *   npx supabase gen types typescript --project-id <your-project-id> > src/types/database.ts
+ */
+
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[];
+
 export interface Database {
   public: {
     Tables: {
