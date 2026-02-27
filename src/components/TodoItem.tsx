@@ -1,36 +1,49 @@
 import React, { useState } from 'react';
-import type { Todo } from '../types/todo';
+import type { Todo, UpdateTodoPayload } from '../types/todo';
+import styles from './TodoItem.module.css';
 
 interface TodoItemProps {
   todo: Todo;
-  onToggle: (id: string, currentState: boolean) => Promise<void>;
+  onToggle: (id: string, currentValue: boolean) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
-  onUpdate: (id: string, title: string, description: string | null) => Promise<void>;
+  onUpdate: (id: string, payload: UpdateTodoPayload) => Promise<void>;
 }
 
 export function TodoItem({ todo, onToggle, onDelete, onUpdate }: TodoItemProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(todo.title);
   const [editDescription, setEditDescription] = useState(todo.description ?? '');
-  const [isSaving, setIsSaving] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const handleToggle = async () => {
     await onToggle(todo.id, todo.is_complete);
   };
 
   const handleDelete = async () => {
-    if (window.confirm('Delete this todo?')) {
+    if (!window.confirm(`Delete "${todo.title}"?`)) return;
+    setDeleting(true);
+    try {
       await onDelete(todo.id);
+    } finally {
+      setDeleting(false);
     }
   };
 
-  const handleEditSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editTitle.trim()) return;
-    setIsSaving(true);
-    await onUpdate(todo.id, editTitle.trim(), editDescription.trim() || null);
-    setIsSaving(false);
-    setIsEditing(false);
+  const handleEditSave = async () => {
+    const trimmedTitle = editTitle.trim();
+    if (!trimmedTitle) return;
+
+    setSaving(true);
+    try {
+      await onUpdate(todo.id, {
+        title: trimmedTitle,
+        description: editDescription.trim() || null,
+      });
+      setIsEditing(false);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleEditCancel = () => {
@@ -39,79 +52,114 @@ export function TodoItem({ todo, onToggle, onDelete, onUpdate }: TodoItemProps) 
     setIsEditing(false);
   };
 
-  if (isEditing) {
-    return (
-      <li className="todo-item todo-item--editing">
-        <form onSubmit={handleEditSubmit} className="todo-item__edit-form">
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleEditSave();
+    }
+    if (e.key === 'Escape') {
+      handleEditCancel();
+    }
+  };
+
+  const formattedDate = new Date(todo.created_at).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+
+  return (
+    <li
+      className={`${styles.item} ${todo.is_complete ? styles.complete : ''}`}
+      aria-label={`Todo: ${todo.title}${todo.is_complete ? ' (completed)' : ''}`}
+    >
+      {isEditing ? (
+        <div className={styles.editForm}>
           <input
             type="text"
             value={editTitle}
             onChange={(e) => setEditTitle(e.target.value)}
-            className="todo-item__edit-input"
-            placeholder="Todo title"
-            required
+            onKeyDown={handleKeyDown}
+            disabled={saving}
             autoFocus
+            maxLength={255}
+            aria-label="Edit todo title"
           />
           <textarea
             value={editDescription}
             onChange={(e) => setEditDescription(e.target.value)}
-            className="todo-item__edit-textarea"
+            onKeyDown={handleKeyDown}
+            disabled={saving}
             placeholder="Description (optional)"
+            maxLength={1000}
             rows={2}
+            aria-label="Edit todo description"
           />
-          <div className="todo-item__edit-actions">
-            <button type="submit" disabled={isSaving} className="btn btn--primary btn--sm">
-              {isSaving ? 'Saving…' : 'Save'}
+          <div className={styles.editActions}>
+            <button
+              className={styles.saveButton}
+              onClick={handleEditSave}
+              disabled={saving || !editTitle.trim()}
+            >
+              {saving ? 'Saving...' : 'Save'}
             </button>
             <button
-              type="button"
+              className={styles.cancelButton}
               onClick={handleEditCancel}
-              disabled={isSaving}
-              className="btn btn--secondary btn--sm"
+              disabled={saving}
             >
               Cancel
             </button>
           </div>
-        </form>
-      </li>
-    );
-  }
-
-  return (
-    <li className={`todo-item${todo.is_complete ? ' todo-item--complete' : ''}`}>
-      <label className="todo-item__checkbox-label">
-        <input
-          type="checkbox"
-          checked={todo.is_complete}
-          onChange={handleToggle}
-          className="todo-item__checkbox"
-          aria-label={`Mark "${todo.title}" as ${todo.is_complete ? 'incomplete' : 'complete'}`}
-        />
-        <span className="todo-item__title">{todo.title}</span>
-      </label>
-
-      {todo.description && (
-        <p className="todo-item__description">{todo.description}</p>
+        </div>
+      ) : (
+        <div className={styles.content}>
+          <div className={styles.left}>
+            <button
+              className={`${styles.checkbox} ${todo.is_complete ? styles.checked : ''}`}
+              onClick={handleToggle}
+              aria-label={todo.is_complete ? 'Mark as incomplete' : 'Mark as complete'}
+              aria-pressed={todo.is_complete}
+            >
+              {todo.is_complete && (
+                <svg viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                  <path
+                    d="M2 6l3 3 5-5"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              )}
+            </button>
+          </div>
+          <div className={styles.body}>
+            <span className={styles.title}>{todo.title}</span>
+            {todo.description && (
+              <p className={styles.description}>{todo.description}</p>
+            )}
+            <span className={styles.date}>{formattedDate}</span>
+          </div>
+          <div className={styles.actions}>
+            <button
+              className={styles.editButton}
+              onClick={() => setIsEditing(true)}
+              aria-label={`Edit "${todo.title}"`}
+            >
+              Edit
+            </button>
+            <button
+              className={styles.deleteButton}
+              onClick={handleDelete}
+              disabled={deleting}
+              aria-label={`Delete "${todo.title}"`}
+            >
+              {deleting ? '...' : 'Delete'}
+            </button>
+          </div>
+        </div>
       )}
-
-      <div className="todo-item__actions">
-        <button
-          type="button"
-          onClick={() => setIsEditing(true)}
-          className="btn btn--ghost btn--sm"
-          aria-label={`Edit "${todo.title}"`}
-        >
-          Edit
-        </button>
-        <button
-          type="button"
-          onClick={handleDelete}
-          className="btn btn--danger btn--sm"
-          aria-label={`Delete "${todo.title}"`}
-        >
-          Delete
-        </button>
-      </div>
     </li>
   );
 }

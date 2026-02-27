@@ -1,13 +1,13 @@
 {
-  "name": "todo-app",
+  "name": "phase11-routing-test",
+  "version": "1.0.0",
   "private": true,
-  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
+    "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",

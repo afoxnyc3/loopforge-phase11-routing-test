@@ -1,64 +1,57 @@
 import React from 'react';
 import type { Todo, UpdateTodoPayload } from '../types/todo';
 import { TodoItem } from './TodoItem';
+import styles from './TodoList.module.css';
 
 interface TodoListProps {
   todos: Todo[];
-  onToggle: (id: string, currentState: boolean) => Promise<void>;
+  loading: boolean;
+  onToggle: (id: string, currentValue: boolean) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onUpdate: (id: string, payload: UpdateTodoPayload) => Promise<void>;
 }
 
-export function TodoList({ todos, onToggle, onDelete, onUpdate }: TodoListProps) {
-  if (todos.length === 0) {
+export function TodoList({ todos, loading, onToggle, onDelete, onUpdate }: TodoListProps) {
+  if (loading) {
     return (
-      <div className="todo-list__empty">
-        <p>No todos yet. Add one above!</p>
+      <div className={styles.stateContainer} aria-live="polite" aria-busy="true">
+        <div className={styles.spinner} aria-hidden="true" />
+        <p className={styles.stateText}>Loading todos...</p>
       </div>
     );
   }
 
-  const pending = todos.filter((t) => !t.is_complete);
-  const completed = todos.filter((t) => t.is_complete);
+  if (todos.length === 0) {
+    return (
+      <div className={styles.stateContainer} aria-live="polite">
+        <p className={styles.emptyIcon} aria-hidden="true">✓</p>
+        <p className={styles.stateText}>No todos yet. Add one above!</p>
+      </div>
+    );
+  }
 
-  const handleUpdate = (id: string, title: string, description: string | null) =>
-    onUpdate(id, { title, description });
+  const completedCount = todos.filter((t) => t.is_complete).length;
+  const totalCount = todos.length;
 
   return (
-    <div className="todo-list">
-      {pending.length > 0 && (
-        <section className="todo-list__section">
-          <h2 className="todo-list__section-heading">Active ({pending.length})</h2>
-          <ul className="todo-list__items">
-            {pending.map((todo) => (
-              <TodoItem
-                key={todo.id}
-                todo={todo}
-                onToggle={onToggle}
-                onDelete={onDelete}
-                onUpdate={handleUpdate}
-              />
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {completed.length > 0 && (
-        <section className="todo-list__section todo-list__section--completed">
-          <h2 className="todo-list__section-heading">Completed ({completed.length})</h2>
-          <ul className="todo-list__items">
-            {completed.map((todo) => (
-              <TodoItem
-                key={todo.id}
-                todo={todo}
-                onToggle={onToggle}
-                onDelete={onDelete}
-                onUpdate={handleUpdate}
-              />
-            ))}
-          </ul>
-        </section>
-      )}
-    </div>
+    <section aria-label="Todo list">
+      <div className={styles.header}>
+        <h2 className={styles.heading}>Your Todos</h2>
+        <span className={styles.badge}>
+          {completedCount}/{totalCount} done
+        </span>
+      </div>
+      <ul className={styles.list} aria-label={`${totalCount} todos, ${completedCount} completed`}>
+        {todos.map((todo) => (
+          <TodoItem
+            key={todo.id}
+            todo={todo}
+            onToggle={onToggle}
+            onDelete={onDelete}
+            onUpdate={onUpdate}
+          />
+        ))}
+      </ul>
+    </section>
   );
 }

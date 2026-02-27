@@ -1,75 +1,90 @@
-import React, { useState } from 'react';
+import React, { useState, type FormEvent } from 'react';
 import type { CreateTodoPayload } from '../types/todo';
+import styles from './TodoForm.module.css';
 
 interface TodoFormProps {
-  onSubmit: (payload: CreateTodoPayload) => Promise<void>;
+  onAdd: (payload: CreateTodoPayload) => Promise<void>;
+  disabled?: boolean;
 }
 
-export function TodoForm({ onSubmit }: TodoFormProps) {
+export function TodoForm({ onAdd, disabled = false }: TodoFormProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showDescription, setShowDescription] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const trimmedTitle = title.trim();
-    if (!trimmedTitle) return;
 
-    setIsSubmitting(true);
-    await onSubmit({
-      title: trimmedTitle,
-      description: description.trim() || undefined,
-    });
-    setIsSubmitting(false);
-    setTitle('');
-    setDescription('');
-    setShowDescription(false);
+    if (!trimmedTitle) {
+      setValidationError('Title is required.');
+      return;
+    }
+
+    setValidationError(null);
+    setSubmitting(true);
+    try {
+      await onAdd({
+        title: trimmedTitle,
+        description: description.trim() || null,
+      });
+      setTitle('');
+      setDescription('');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="todo-form" aria-label="Add a new todo">
-      <div className="todo-form__row">
+    <form className={styles.form} onSubmit={handleSubmit} aria-label="Add new todo">
+      <h2 className={styles.heading}>Add a Todo</h2>
+      <div className={styles.field}>
+        <label htmlFor="todo-title" className={styles.label}>
+          Title <span aria-hidden="true" className={styles.required}>*</span>
+        </label>
         <input
+          id="todo-title"
           type="text"
           value={title}
-          onChange={(e) => setTitle(e.target.value)}
+          onChange={(e) => {
+            setTitle(e.target.value);
+            if (validationError) setValidationError(null);
+          }}
           placeholder="What needs to be done?"
-          className="todo-form__input"
-          required
-          disabled={isSubmitting}
-          aria-label="Todo title"
+          disabled={disabled || submitting}
+          aria-required="true"
+          aria-invalid={validationError ? 'true' : undefined}
+          aria-describedby={validationError ? 'title-error' : undefined}
           maxLength={255}
         />
-        <button
-          type="submit"
-          disabled={isSubmitting || !title.trim()}
-          className="btn btn--primary"
-        >
-          {isSubmitting ? 'Adding…' : 'Add Todo'}
-        </button>
+        {validationError && (
+          <p id="title-error" className={styles.error} role="alert">
+            {validationError}
+          </p>
+        )}
       </div>
-
-      <button
-        type="button"
-        className="todo-form__toggle-desc"
-        onClick={() => setShowDescription((prev) => !prev)}
-      >
-        {showDescription ? '− Hide description' : '+ Add description'}
-      </button>
-
-      {showDescription && (
+      <div className={styles.field}>
+        <label htmlFor="todo-description" className={styles.label}>
+          Description <span className={styles.optional}>(optional)</span>
+        </label>
         <textarea
+          id="todo-description"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="Optional description…"
-          className="todo-form__textarea"
-          rows={3}
-          disabled={isSubmitting}
-          aria-label="Todo description"
+          placeholder="Add more details..."
+          disabled={disabled || submitting}
           maxLength={1000}
+          rows={3}
         />
-      )}
+      </div>
+      <button
+        type="submit"
+        className={styles.submitButton}
+        disabled={disabled || submitting || !title.trim()}
+      >
+        {submitting ? 'Adding...' : '+ Add Todo'}
+      </button>
     </form>
   );
 }
